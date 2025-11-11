@@ -21,12 +21,12 @@ COPY . .
 
 # Install Python dependencies
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install -r backend/requirements.txt
 
 # Expose port and run app
 EXPOSE 8000
 RUN echo "✅ Dockerfile successfully built and running!"
 ENV OCR_AGENT=unstructured_pytesseract
-CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "mkdir -p /data/storage /data/temp && ln -sfn /data/storage /app/storage && ln -sfn /data/temp /app/temp && uvicorn backend.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
 
 
