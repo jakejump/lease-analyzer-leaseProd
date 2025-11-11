@@ -16,12 +16,21 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY . .
+# Copy only requirements first for better layer caching
+COPY backend/requirements.txt /app/backend/requirements.txt
 
-# Install Python dependencies
-RUN pip install --upgrade pip
-RUN pip install -r backend/requirements.txt
+# Harden pip installs against network hiccups and reduce memory usage
+ENV PIP_DEFAULT_TIMEOUT=100 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Install Python dependencies (cached layer)
+RUN python -m pip install --upgrade pip && \
+    python -m pip install --no-cache-dir -r /app/backend/requirements.txt
+
+# Copy the rest of the project
+COPY . .
+ENV PYTHONPATH=/app
 
 # Expose port and run app
 EXPOSE 8000
