@@ -17,17 +17,21 @@ from backend.lease_chain import (
 )
 
 
+def _redis_conn() -> Redis:
+    url = os.getenv("REDIS_URL")
+    try:
+        return Redis.from_url(url) if url else Redis()
+    except Exception:
+        return Redis()
+
+
 def get_queue() -> Queue:
-    redis_url = os.getenv("REDIS_URL")
-    conn = Redis.from_url(redis_url) if redis_url else Redis()
+    conn = _redis_conn()
     return Queue("default", connection=conn)
 
 
 def _set_progress(version_id: str, stage: str | None = None, progress: int | None = None) -> None:
-    try:
-        conn = Redis()
-    except Exception:
-        return
+    conn = _redis_conn()
     key = f"version:{version_id}:status"
     data: dict[str, str] = {}
     if stage is not None:
@@ -100,92 +104,4 @@ def process_version(version_id: str) -> None:
             except Exception:
                 pass
             _set_progress(version_id, stage="failed", progress=100)
-
-import json
-from rq import Queue
-from redis import Redis
-from typing import Optional
-
-from backend.models import LeaseVersion, LeaseVersionStatus, RiskScore, AbnormalityRecord
-from backend.db import session_scope
-from backend.paths import _doc_dir
-from backend.lease_chain import evaluate_general_risks, detect_abnormalities, _get_or_build_vectorstore_for_doc
-from backend.state import DOC_CACHE as _DOC_CACHE
-import logging
-
-
-def get_queue() -> Queue:
-    redis_url = None  # default localhost
-    conn = Redis.from_url(redis_url) if redis_url else Redis()
-    return Queue("default", connection=conn)
-
-
-def _set_progress(version_id: str, stage: str, progress: int) -> None:
-    try:
-        conn = Redis()
-        conn.hset(f"version:{version_id}:status", mapping={"stage": stage, "progress": progress})
-    except Exception:
-        pass
-
-
-def process_version(version_id: str) -> None:
-    """Run extraction/indexing/analyses for a lease version (simplified synchronous pipeline)."""
-    with session_scope() as s:
-        v: Optional[LeaseVersion] = s.get(LeaseVersion, version_id)
-        if not v or not v.file_url:
-            return
-        # Copy file to expected working path if needed
-        # For now assume v.file_url is accessible; put it under temp/{version_id}/lease.pdf for current pipeline
-        # Build vectorstore
-        try:
-            _set_progress(version_id, "copy", 5)
-            # Use stable doc_id per-version (no dedupe): doc_id = version_id
-            import os, shutil
-            os.makedirs("temp", exist_ok=True)
-            temp_pdf = f"temp/{version_id}.pdf"
-            if v.file_url and os.path.exists(v.file_url):
-                shutil.copy(v.file_url, temp_pdf)
-            from backend.lease_chain import _doc_dir
-            doc_id = version_id
-            # Persist doc_id early for better observability even if later steps fail
-            v.doc_id = doc_id
-            s.flush()
-            target_dir = _doc_dir(doc_id)
-            target_pdf = str(target_dir / "lease.pdf")
-            if not os.path.exists(target_pdf):
-                shutil.copy(temp_pdf, target_pdf)
-            _set_progress(version_id, "index", 40)
-            # Ensure we rebuild for this doc_id (no cache reuse)
-            try:
-                if doc_id in _DOC_CACHE:
-                    del _DOC_CACHE[doc_id]
-            except Exception:
-                pass
-            _get_or_build_vectorstore_for_doc(doc_id)
-            # Precompute and persist clauses so downstream ops (diff, UI) don't re-extract text
-            try:
-                from backend.lease_chain import get_or_build_clauses_for_doc
-                get_or_build_clauses_for_doc(doc_id)
-            except Exception:
-                pass
-
-            # Analyses
-            _set_progress(version_id, "risk", 60)
-            risks = evaluate_general_risks(target_pdf)
-            _set_progress(version_id, "abnormalities", 80)
-            abn = detect_abnormalities(target_pdf)
-            s.add(RiskScore(lease_version_id=version_id, payload=json.dumps(risks), model="gpt-4o"))
-            s.add(AbnormalityRecord(lease_version_id=version_id, payload=json.dumps(abn), model="gpt-4o"))
-            v.doc_id = doc_id
-            v.status = LeaseVersionStatus.processed
-            _set_progress(version_id, "done", 100)
-        except Exception as e:
-            logging.exception("process_version failed for %s", version_id)
-            v.status = LeaseVersionStatus.failed
-            try:
-                _set_progress(version_id, "failed", 100)
-            except Exception:
-                pass
-        s.flush()
-
 
