@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      - DATABASE_URL=sqlite:///./app.db
+      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - APP_VERSION=0.1.0
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    command: sh -c "uvicorn app:app --host 0.0.0.0 --port 8000 --reload"
+
+  worker:
+    build:
+      context: ./backend
+    environment:
+      - DATABASE_URL=sqlite:///./app.db
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+    depends_on:
+      - redis
+    command: python -m backend.worker
+
+volumes:
+  storage:
+
+

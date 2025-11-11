@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+
+# Node / Next.js (frontend)
+frontend/node_modules/
+frontend/.next/
+frontend/.vercel/
+frontend/.turbo/
+frontend/.eslintcache
+frontend/.env*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Local storage and temp (backend runtime artifacts)
+storage/
+temp/
+
+# Docker
+.dockerignore
+
+node_modules
+.next
+.env
+.DS_Store
+
+# local env/build/cache
+.venv/
+node_modules/
+frontend/node_modules/
+frontend/.next/
+.next/
+temp/
+**/__pycache__/
+*.pyc
+.DS_Store
