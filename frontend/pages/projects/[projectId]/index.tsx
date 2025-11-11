@@ -102,7 +102,7 @@ export default function ProjectWorkspacePage() {
         }
         // Start polling status immediately after upload so UI leaves "Uploading…"
         setTimeout(async () => {
-          const statuses = await api.get(`/v1/projects/${projectId}/versions/status`);
+          await api.get(`/v1/projects/${projectId}/versions/status`);
           // ignore result; existing poller will update state
         }, 200);
         // Auto-select the newly uploaded version so queries use its index
@@ -297,7 +297,7 @@ export default function ProjectWorkspacePage() {
 
             {tab === "diff" && (
               <div className="mt-2">
-                <DiffPanel projectId={projectId} versions={versions} statuses={statuses} />
+                <DiffPanel versions={versions} statuses={statuses} />
               </div>
             )}
           </div>

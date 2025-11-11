@@ -25,8 +25,6 @@ export default function LeaseQA() {
 		validateStatus: () => true,
 	});
 
-	const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
 	const handleUpload = async () => {
         if (!file) return;
         setEvaluating(true);
@@ -34,7 +32,6 @@ export default function LeaseQA() {
         formData.append("file", file);
 
         try {
-				setErrorMessage(null);
 				const resUpload = await api.post("/upload", formData);
 				if (resUpload.status >= 400) {
 					throw new Error(`Upload failed (${resUpload.status})`);
@@ -61,7 +58,6 @@ export default function LeaseQA() {
 
 			} catch (e) {
 				console.error("/upload failed", e);
-				setErrorMessage("Upload failed. Please check the backend logs and your internet connection.");
 				setRisks({});
         } finally {
             setEvaluating(false);
@@ -187,9 +183,15 @@ export default function LeaseQA() {
                         <h2 className="text-lg font-semibold mb-4">Abnormalities Found</h2>
                         <ul className="list-disc pl-5 space-y-2">
                             {abnormalities.map((item, idx) => {
-                                const isObj = typeof item === 'object' && item !== null && 'text' in item;
-                                const text = isObj ? (item as any).text as string : (item as string);
-                                const impact = isObj ? (item as any).impact as 'beneficial' | 'harmful' | 'neutral' : 'harmful';
+                            let text: string;
+                            let impact: 'beneficial' | 'harmful' | 'neutral';
+                            if (typeof item === 'string') {
+                                text = item;
+                                impact = 'harmful';
+                            } else {
+                                text = item.text;
+                                impact = item.impact ?? 'harmful';
+                            }
                                 const color = impact === 'beneficial' ? 'text-green-400' : impact === 'neutral' ? 'text-yellow-400' : 'text-red-400';
                                 return (
                                     <li key={idx} className={color}>{text}</li>

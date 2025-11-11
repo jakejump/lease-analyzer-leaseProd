@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api, DiffResponse, LeaseVersionOut, VersionStatusResponse } from "../lib/api";
 
 type Props = {
-  projectId: string;
   versions: LeaseVersionOut[];
   statuses: Record<string, VersionStatusResponse | undefined>;
 };
@@ -10,7 +9,7 @@ type Props = {
 const impactColor = (imp?: string) =>
   imp === "beneficial" ? "text-green-400" : imp === "neutral" ? "text-yellow-400" : "text-red-400";
 
-export default function DiffPanel({ projectId, versions, statuses }: Props) {
+export default function DiffPanel({ versions, statuses }: Props) {
   const [baseId, setBaseId] = useState<string | null>(null);
   const [compareId, setCompareId] = useState<string | null>(null);
   const [res, setRes] = useState<DiffResponse | null>(null);
@@ -19,7 +18,7 @@ export default function DiffPanel({ projectId, versions, statuses }: Props) {
   useEffect(() => {
     if (!baseId && versions.length >= 2) setBaseId(versions[1].id);
     if (!compareId && versions.length >= 1) setCompareId(versions[0].id);
-  }, [versions]);
+  }, [versions, baseId, compareId]);
 
   const bothProcessed = useMemo(() => {
     if (!baseId || !compareId) return false;
