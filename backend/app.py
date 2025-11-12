@@ -26,11 +26,16 @@ from backend.state import DOC_CACHE as _DOC_CACHE
 app = FastAPI()
 
 from fastapi.middleware.cors import CORSMiddleware
+import os as _env_os
+_origins = get_allowed_origins()
+_allow_all = (_env_os.getenv("CORS_ALLOW_ALL", "").lower() in ("1", "true", "yes"))
+_cors_allow_credentials = not _allow_all
+_cors_origins = ["*"] if _allow_all else _origins
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_allowed_origins(),
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
