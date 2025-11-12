@@ -177,10 +177,11 @@ async def reupload_version(version_id: str, file: UploadFile = File(...)):
         else:
             # Trigger processing for this version without changing DB enum to a non-existent value
             import os as _os
-            if (_os.getenv("PROCESS_INLINE", "").lower() in ("1", "true", "yes")):
+            inline_mode = (_os.getenv("PROCESS_INLINE", "").lower() in ("1", "true", "yes")) or (not _os.getenv("REDIS_URL"))
+            if inline_mode:
                 # In dev, run inline for immediate results
                 try:
-                    print(f"[reupload] PROCESS_INLINE=true; starting inline process_version for {v.id}")
+                    print(f"[reupload] inline processing; starting process_version for {v.id}")
                     process_version(v.id)
                 except Exception:
                     print("[reupload] inline processing failed", flush=True)
@@ -191,12 +192,12 @@ async def reupload_version(version_id: str, file: UploadFile = File(...)):
                     q.enqueue(process_version, v.id)
                     print(f"[reupload] enqueued version {v.id} for processing")
                 except Exception:
+                    # As a last resort, run inline to guarantee progress
                     try:
-                        import threading as _threading
-                        _threading.Thread(target=process_version, args=(v.id,), daemon=True).start()
-                        print(f"[reupload] started background thread for processing {v.id}")
+                        print(f"[reupload] enqueue failed; running inline for {v.id}")
+                        process_version(v.id)
                     except Exception:
-                        print("[reupload] failed to start background processing", flush=True)
+                        print("[reupload] failed to start processing", flush=True)
                         pass
         s.flush()
         return LeaseVersionOut(id=v.id, project_id=v.project_id, label=v.label, status=v.status.value, created_at=v.created_at.isoformat() if v.created_at else None)
@@ -207,7 +208,9 @@ def list_versions_status(project_id: str):
         rows = s.query(LeaseVersion).filter(LeaseVersion.project_id == project_id).order_by(LeaseVersion.created_at.desc()).all()
         out: list[VersionStatusResponse] = []
         try:
-            conn = Redis()
+            import os as _os
+            url = _os.getenv("REDIS_URL")
+            conn = Redis.from_url(url) if url else Redis()
         except Exception:
             conn = None
         for v in rows:
@@ -259,9 +262,10 @@ async def upload_version_file(project_id: str, label: str | None = Form(default=
         # Always process this version as new (no dedupe)
         # Keep DB status as 'uploaded' while processing; use Redis stage/progress for live updates
         import os as _os
-        if (_os.getenv("PROCESS_INLINE", "").lower() in ("1", "true", "yes")):
+        inline_mode = (_os.getenv("PROCESS_INLINE", "").lower() in ("1", "true", "yes")) or (not _os.getenv("REDIS_URL"))
+        if (inline_mode):
             try:
-                print(f"[upload] PROCESS_INLINE=true; starting inline process_version for {v.id}")
+                print(f"[upload] inline processing; starting process_version for {v.id}")
                 process_version(v.id)
                 print(f"[upload] inline processing finished for {v.id}")
             except Exception:
@@ -274,12 +278,12 @@ async def upload_version_file(project_id: str, label: str | None = Form(default=
                 q.enqueue(process_version, v.id)
                 print(f"[upload] enqueued version {v.id} for processing")
             except Exception:
+                # As a last resort, run inline to guarantee progress
                 try:
-                    import threading as _threading
-                    _threading.Thread(target=process_version, args=(v.id,), daemon=True).start()
-                    print(f"[upload] started background thread for processing {v.id}")
+                    print(f"[upload] enqueue failed; running inline for {v.id}")
+                    process_version(v.id)
                 except Exception:
-                    print("[upload] failed to start background processing", flush=True)
+                    print("[upload] failed to start processing", flush=True)
                     pass
         # Set as current version by default for convenience
         p = s.get(Project, project_id)
@@ -298,7 +302,9 @@ def get_version_status(version_id: str):
         stage = None
         progress = None
         try:
-            conn = Redis()
+            import os as _os
+            url = _os.getenv("REDIS_URL")
+            conn = Redis.from_url(url) if url else Redis()
             data = conn.hgetall(f"version:{version_id}:status")
             if data:
                 stage = (data.get(b"stage") or b"").decode() or None
@@ -331,7 +337,9 @@ def process_version_inline(version_id: str):
         stage = None
         progress = None
         try:
-            conn = Redis()
+            import os as _os
+            url = _os.getenv("REDIS_URL")
+            conn = Redis.from_url(url) if url else Redis()
             data = conn.hgetall(f"version:{version_id}:status")
             if data:
                 stage = (data.get(b"stage") or b"").decode() or None
